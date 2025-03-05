@@ -7,11 +7,14 @@ import android.app.Dialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -45,15 +48,30 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     // Request codes
     private val REQUEST_IMAGE_CAPTURE = 1
     private val REQUEST_IMAGE_PICK = 2
-    private val REQUEST_CODE_PERMISSIONS = 101
 
     // Permissions
     private val REQUIRED_PERMISSIONS = arrayOf(
         Manifest.permission.CAMERA,
-        Manifest.permission.READ_EXTERNAL_STORAGE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
     )
 
     private var currentImageUri: Uri? = null
+
+    // Permission launcher
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            showImageSourceDialog()
+        } else {
+            showPermissionRationale()
+        }
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -68,7 +86,40 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
 
         binding.ivScan.setOnClickListener {
-            showImageSourceDialog()
+            checkPermissionsAndShowDialog()
+        }
+    }
+
+    private fun checkPermissionsAndShowDialog() {
+        when {
+            allPermissionsGranted() -> showImageSourceDialog()
+            shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) -> showPermissionRationale()
+            else -> requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
+        }
+    }
+
+    private fun showPermissionRationale() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Permission Required")
+            .setMessage("This app needs camera and photo access to find similar products")
+            .setPositiveButton("Allow") { _, _ ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                    !shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)
+                ) {
+                    openAppSettings()
+                } else {
+                    requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
+                }
+            }
+            .setNegativeButton("Cancel") { _, _ -> }
+            .show()
+    }
+
+    private fun openAppSettings() {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", requireContext().packageName, null)
+        }.also { intent ->
+            startActivity(intent)
         }
     }
 
@@ -96,22 +147,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun showImageSourceDialog() {
-        if (allPermissionsGranted()) {
-            val options = arrayOf("Take Photo", "Choose from Gallery", "Cancel")
-            AlertDialog.Builder(requireContext()).apply {
-                setItems(options) { _, which ->
-                    when(which) {
-                        0 -> takePhoto()
-                        1 -> pickFromGallery()
-                    }
+        val options = arrayOf("Take Photo", "Choose from Gallery", "Cancel")
+        AlertDialog.Builder(requireContext()).apply {
+            setItems(options) { _, which ->
+                when(which) {
+                    0 -> takePhoto()
+                    1 -> pickFromGallery()
                 }
-            }.show()
-        } else {
-            requestPermissions(
-                REQUIRED_PERMISSIONS,
-                REQUEST_CODE_PERMISSIONS
-            )
-        }
+            }
+        }.show()
     }
 
     private fun takePhoto() {
@@ -145,7 +189,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun pickFromGallery() {
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
         startActivityForResult(intent, REQUEST_IMAGE_PICK)
     }
 
@@ -184,24 +231,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             requireContext(),
             it
         ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            if (allPermissionsGranted()) {
-                showImageSourceDialog()
-            } else {
-                Toast.makeText(
-                    requireContext(),
-                    "Permissions not granted",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
     }
 
     private fun showSimilarProducts(products: List<Product>) {
