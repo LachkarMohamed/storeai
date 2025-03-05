@@ -15,7 +15,7 @@ import com.example.storeai.data.model.LoginResponse
 import com.example.storeai.data.model.Category
 import retrofit2.http.Part
 import okhttp3.MultipartBody
-
+import retrofit2.http.Multipart
 
 
 interface ApiService {
@@ -34,7 +34,6 @@ interface ApiService {
     @GET("categories")
     suspend fun getAllCategories(): Response<List<Category>>
 
-    @POST("search/by-image") suspend fun searchByImage(@Part image: MultipartBody.Part): Response<List<Product>>
-
+    @Multipart @POST("get_similar_images") suspend fun getSimilarProducts(@Part image: MultipartBody.Part): Response<List<Product>>
 
 }

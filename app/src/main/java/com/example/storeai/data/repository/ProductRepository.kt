@@ -20,9 +20,9 @@ class ProductRepository {
         return apiService.getProductById(id).body() ?: throw Exception("Product not found")
     }
 
-    suspend fun searchByImage(imageFile: File): List<Product> {
+    suspend fun getSimilarProducts(imageFile: File): List<Product> {
         val requestFile = imageFile.asRequestBody("image/*".toMediaTypeOrNull())
-        val imagePart = MultipartBody.Part.createFormData("image", imageFile.name, requestFile)
-        return apiService.searchByImage(imagePart).body() ?: emptyList()
+        val imagePart = MultipartBody.Part.createFormData("file", imageFile.name, requestFile)
+        return RetrofitClient.similarityInstance.getSimilarProducts(imagePart).body() ?: emptyList()
     }
 }
